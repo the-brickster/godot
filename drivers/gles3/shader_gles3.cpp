@@ -65,6 +65,9 @@ void ShaderGLES3::_add_stage(const char *p_code, StageType p_stage_type) {
 			}
 
 			push_chunk = true;
+		} else if (l.begins_with("#FRAGMENT_OUTS")) {
+			chunk.type = StageTemplate::Chunk::TYPE_FRAGMENT_OUTS;
+			push_chunk = true;
 		} else if (l.begins_with("#MATERIAL_UNIFORMS")) {
 			chunk.type = StageTemplate::Chunk::TYPE_MATERIAL_UNIFORMS;
 			push_chunk = true;
@@ -217,6 +220,9 @@ void ShaderGLES3::_build_variant_code(StringBuilder &builder, uint32_t p_variant
 			} break;
 			case StageTemplate::Chunk::TYPE_FRAGMENT_GLOBALS: {
 				builder.append(p_version->fragment_globals.get_data()); // fragment globals
+			} break;
+			case StageTemplate::Chunk::TYPE_FRAGMENT_OUTS: {
+				builder.append(p_version->fragment_outs.get_data()); // fragment outs
 			} break;
 			case StageTemplate::Chunk::TYPE_CODE: {
 				if (p_version->code_sections.has(chunk.code)) {
@@ -681,7 +687,7 @@ void ShaderGLES3::_initialize_version(Version *p_version) {
 	_save_to_cache(p_version);
 }
 
-void ShaderGLES3::version_set_code(RID p_version, const HashMap<String, String> &p_code, const String &p_uniforms, const String &p_vertex_globals, const String &p_fragment_globals, const Vector<String> &p_custom_defines, const LocalVector<ShaderGLES3::TextureUniformData> &p_texture_uniforms, bool p_initialize) {
+void ShaderGLES3::version_set_code(RID p_version, const HashMap<String, String> &p_code, const String &p_uniforms, const String &p_vertex_globals, const String &p_fragment_globals, const String& p_fragment_outs, const Vector<String> &p_custom_defines, const LocalVector<ShaderGLES3::TextureUniformData> &p_texture_uniforms, bool p_initialize) {
 	Version *version = version_owner.get_or_null(p_version);
 	ERR_FAIL_COND(!version);
 
@@ -689,6 +695,7 @@ void ShaderGLES3::version_set_code(RID p_version, const HashMap<String, String> 
 
 	version->vertex_globals = p_vertex_globals.utf8();
 	version->fragment_globals = p_fragment_globals.utf8();
+	version->fragment_outs = p_fragment_outs.utf8();
 	version->uniforms = p_uniforms.utf8();
 	version->code_sections.clear();
 	version->texture_uniforms = p_texture_uniforms;

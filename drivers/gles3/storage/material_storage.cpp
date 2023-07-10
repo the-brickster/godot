@@ -890,6 +890,7 @@ void MaterialData::update_textures(const HashMap<StringName, Variant> &p_paramet
 			if (uniform_array_size > 0) {
 				if (textures.size() < uniform_array_size) {
 					HashMap<StringName, HashMap<int, RID>>::ConstIterator W = p_default_textures.find(uniform_name);
+					//print_line("uniform name: " + uniform_name);
 					for (int j = textures.size(); j < uniform_array_size; j++) {
 						if (W && W->value.has(j)) {
 							textures.push_back(W->value[j]);
@@ -1071,7 +1072,6 @@ void MaterialData::update_parameters_internal(const HashMap<StringName, Variant>
 	for (int i = 0; i < p_texture_uniforms.size(); i++) {
 		tex_uniform_count += uint32_t(p_texture_uniforms[i].array_size > 0 ? p_texture_uniforms[i].array_size : 1);
 	}
-
 	if ((uint32_t)texture_cache.size() != tex_uniform_count || p_textures_dirty) {
 		texture_cache.resize(tex_uniform_count);
 		p_textures_dirty = true;
@@ -2589,7 +2589,7 @@ void CanvasShaderData::set_code(const String &p_code) {
 
 	LocalVector<ShaderGLES3::TextureUniformData> texture_uniform_data = get_texture_uniform_data(gen_code.texture_uniforms);
 
-	MaterialStorage::get_singleton()->shaders.canvas_shader.version_set_code(version, gen_code.code, gen_code.uniforms, gen_code.stage_globals[ShaderCompiler::STAGE_VERTEX], gen_code.stage_globals[ShaderCompiler::STAGE_FRAGMENT], gen_code.defines, texture_uniform_data);
+	MaterialStorage::get_singleton()->shaders.canvas_shader.version_set_code(version, gen_code.code, gen_code.uniforms, gen_code.stage_globals[ShaderCompiler::STAGE_VERTEX], gen_code.stage_globals[ShaderCompiler::STAGE_FRAGMENT], gen_code.fragment_outs,gen_code.defines, texture_uniform_data);
 	ERR_FAIL_COND(!MaterialStorage::get_singleton()->shaders.canvas_shader.version_is_valid(version));
 
 	ubo_size = gen_code.uniform_total_size;
@@ -2641,6 +2641,9 @@ static void bind_uniforms_generic(const Vector<RID> &p_textures, const Vector<Sh
 		ERR_FAIL_COND_MSG(texture_uniform_index >= p_texture_uniforms.size(), "texture_uniform_index out of bounds");
 		GLES3::Texture *texture = TextureStorage::get_singleton()->get_texture(textures[ti]);
 		const ShaderCompiler::GeneratedCode::Texture &texture_uniform = texture_uniforms[texture_uniform_index];
+		if (texture_uniform.hint == ShaderLanguage::ShaderNode::Uniform::HINT_COLOR_ATTACHMENT_TEXTURE) {
+			continue;
+		}
 		if (texture) {
 			glActiveTexture(GL_TEXTURE0 + texture_offset + ti);
 			glBindTexture(target_from_type[texture_uniform.type], texture->tex_id);
@@ -2756,7 +2759,7 @@ void SkyShaderData::set_code(const String &p_code) {
 
 	LocalVector<ShaderGLES3::TextureUniformData> texture_uniform_data = get_texture_uniform_data(gen_code.texture_uniforms);
 
-	MaterialStorage::get_singleton()->shaders.sky_shader.version_set_code(version, gen_code.code, gen_code.uniforms, gen_code.stage_globals[ShaderCompiler::STAGE_VERTEX], gen_code.stage_globals[ShaderCompiler::STAGE_FRAGMENT], gen_code.defines, texture_uniform_data);
+	MaterialStorage::get_singleton()->shaders.sky_shader.version_set_code(version, gen_code.code, gen_code.uniforms, gen_code.stage_globals[ShaderCompiler::STAGE_VERTEX], gen_code.stage_globals[ShaderCompiler::STAGE_FRAGMENT], gen_code.fragment_outs, gen_code.defines, texture_uniform_data);
 	ERR_FAIL_COND(!MaterialStorage::get_singleton()->shaders.sky_shader.version_is_valid(version));
 
 	ubo_size = gen_code.uniform_total_size;
@@ -2957,6 +2960,10 @@ void SceneShaderData::set_code(const String &p_code) {
 	uses_normal_texture = gen_code.uses_normal_roughness_texture;
 	uses_vertex_time = gen_code.uses_vertex_time;
 	uses_fragment_time = gen_code.uses_fragment_time;
+	uses_color_attachment = gen_code.uses_color_attachment;
+	uses_color_attachment_texture = gen_code.uses_color_attachment_texture;
+	color_attachment_size = gen_code.color_attachment_size;
+	color_attachment_texture_list = gen_code.color_attachment_texture_list;
 
 #ifdef DEBUG_ENABLED
 	if (uses_particle_trails) {
@@ -2999,8 +3006,7 @@ void SceneShaderData::set_code(const String &p_code) {
 #endif
 
 	LocalVector<ShaderGLES3::TextureUniformData> texture_uniform_data = get_texture_uniform_data(gen_code.texture_uniforms);
-
-	MaterialStorage::get_singleton()->shaders.scene_shader.version_set_code(version, gen_code.code, gen_code.uniforms, gen_code.stage_globals[ShaderCompiler::STAGE_VERTEX], gen_code.stage_globals[ShaderCompiler::STAGE_FRAGMENT], gen_code.defines, texture_uniform_data);
+	MaterialStorage::get_singleton()->shaders.scene_shader.version_set_code(version, gen_code.code, gen_code.uniforms, gen_code.stage_globals[ShaderCompiler::STAGE_VERTEX], gen_code.stage_globals[ShaderCompiler::STAGE_FRAGMENT], gen_code.fragment_outs, gen_code.defines, texture_uniform_data);
 	ERR_FAIL_COND(!MaterialStorage::get_singleton()->shaders.scene_shader.version_is_valid(version));
 
 	ubo_size = gen_code.uniform_total_size;
@@ -3125,7 +3131,7 @@ void ParticlesShaderData::set_code(const String &p_code) {
 
 	LocalVector<ShaderGLES3::TextureUniformData> texture_uniform_data = get_texture_uniform_data(gen_code.texture_uniforms);
 
-	MaterialStorage::get_singleton()->shaders.particles_process_shader.version_set_code(version, gen_code.code, gen_code.uniforms, gen_code.stage_globals[ShaderCompiler::STAGE_VERTEX], gen_code.stage_globals[ShaderCompiler::STAGE_FRAGMENT], gen_code.defines, texture_uniform_data);
+	MaterialStorage::get_singleton()->shaders.particles_process_shader.version_set_code(version, gen_code.code, gen_code.uniforms, gen_code.stage_globals[ShaderCompiler::STAGE_VERTEX], gen_code.stage_globals[ShaderCompiler::STAGE_FRAGMENT],gen_code.fragment_outs ,gen_code.defines, texture_uniform_data);
 	ERR_FAIL_COND(!MaterialStorage::get_singleton()->shaders.particles_process_shader.version_is_valid(version));
 
 	ubo_size = gen_code.uniform_total_size;

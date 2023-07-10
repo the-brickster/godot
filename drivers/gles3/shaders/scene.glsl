@@ -583,6 +583,8 @@ uniform mediump float opaque_prepass_threshold;
 
 layout(location = 0) out vec4 frag_color;
 
+#FRAGMENT_OUTS
+
 vec3 F0(float metallic, float specular, vec3 albedo) {
 	float dielectric = 0.16 * specular * specular;
 	// use albedo * metallic as colored specular reflectance at 0 angle for metallic materials;

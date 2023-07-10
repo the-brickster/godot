@@ -179,6 +179,7 @@ public:
 		TK_HINT_SCREEN_TEXTURE,
 		TK_HINT_NORMAL_ROUGHNESS_TEXTURE,
 		TK_HINT_DEPTH_TEXTURE,
+		TK_HINT_COLOR_ATTACHMENT_TEXTURE,
 		TK_FILTER_NEAREST,
 		TK_FILTER_LINEAR,
 		TK_FILTER_NEAREST_MIPMAP,
@@ -674,6 +675,7 @@ public:
 				HINT_SCREEN_TEXTURE,
 				HINT_NORMAL_ROUGHNESS_TEXTURE,
 				HINT_DEPTH_TEXTURE,
+				HINT_COLOR_ATTACHMENT_TEXTURE,
 				HINT_MAX
 			};
 
@@ -707,10 +709,24 @@ public:
 			}
 		};
 
+		struct FragmentOut {
+			enum Stage {
+				STAGE_UNKNOWN,
+				STAGE_VERTEX, // transition stage to STAGE_VERTEX_TO_FRAGMENT_LIGHT, emits warning if it's not used
+				STAGE_FRAGMENT, // transition stage to STAGE_FRAGMENT_TO_LIGHT, emits warning if it's not used
+				STAGE_VERTEX_TO_FRAGMENT_LIGHT,
+				STAGE_FRAGMENT_TO_LIGHT,
+			};
+			Stage stage = STAGE_UNKNOWN;
+			StringName name;
+			DataType type;
+			TkPos tkpos;
+		};
 		HashMap<StringName, Constant> constants;
 		HashMap<StringName, Varying> varyings;
 		HashMap<StringName, Uniform> uniforms;
 		HashMap<StringName, Struct> structs;
+		HashMap<StringName, FragmentOut> fragouts;
 		Vector<StringName> render_modes;
 
 		Vector<Function> functions;
@@ -925,6 +941,7 @@ private:
 	HashMap<StringName, Usage> used_uniforms;
 	HashMap<StringName, Usage> used_functions;
 	HashMap<StringName, Usage> used_structs;
+	HashMap<StringName, Usage> used_fragmentouts;
 	HashMap<ShaderWarning::Code, HashMap<StringName, Usage> *> warnings_check_map;
 
 	HashMap<StringName, HashMap<StringName, Usage>> used_local_vars;
@@ -1017,6 +1034,7 @@ private:
 		IDENTIFIER_FUNCTION,
 		IDENTIFIER_UNIFORM,
 		IDENTIFIER_VARYING,
+		IDENTIFIER_FRAGOUT,
 		IDENTIFIER_FUNCTION_ARGUMENT,
 		IDENTIFIER_LOCAL_VAR,
 		IDENTIFIER_BUILTIN_VAR,
@@ -1094,6 +1112,8 @@ private:
 	bool _propagate_function_call_sampler_builtin_reference(StringName p_name, int p_argument, const StringName &p_builtin);
 	bool _validate_varying_assign(ShaderNode::Varying &p_varying, String *r_message);
 	bool _check_node_constness(const Node *p_node) const;
+
+	bool _validate_fragout_assign(ShaderNode::FragmentOut& p_fragmentout, String* r_message);
 
 	Node *_parse_expression(BlockNode *p_block, const FunctionInfo &p_function_info);
 	Error _parse_array_size(BlockNode *p_block, const FunctionInfo &p_function_info, bool p_forbid_unknown_size, Node **r_size_expression, int *r_array_size, bool *r_unknown_size);

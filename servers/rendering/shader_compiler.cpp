@@ -564,6 +564,16 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 					ucode += _typestr(uniform.type);
 				}
 
+				if (uniform.hint == SL::ShaderNode::Uniform::HINT_COLOR_ATTACHMENT_TEXTURE) {
+					if (!RS::get_singleton()->is_low_end()) {
+						continue;
+					}
+					r_gen_code.color_attachment_counter += 1;
+					uniform_name = "color_attachment_" + itos(r_gen_code.color_attachment_counter);
+					r_gen_code.color_attachment_texture_list.append(_mkid(uniform_name));
+					//print_line("color att: "+uniform_name);
+				}
+
 				ucode += " " + _mkid(uniform_name);
 				if (uniform.array_size > 0) {
 					ucode += "[";
@@ -585,6 +595,9 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 					texture.repeat = uniform.repeat;
 					texture.global = uniform.scope == ShaderLanguage::ShaderNode::Uniform::SCOPE_GLOBAL;
 					texture.array_size = uniform.array_size;
+					if (uniform.hint == SL::ShaderNode::Uniform::HINT_COLOR_ATTACHMENT_TEXTURE) {
+						texture.is_color_attachment = true;
+					}
 					if (texture.global) {
 						r_gen_code.uses_global_textures = true;
 					}
@@ -724,6 +737,37 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 				r_gen_code.stage_globals[STAGE_FRAGMENT] += gcode;
 			}
 
+			//Fragout section
+
+			index = p_default_actions.base_fragout_index;
+
+			Vector<StringName> fragout_names;
+
+			for (const KeyValue<StringName, SL::ShaderNode::FragmentOut>& E : pnode->fragouts) {
+				fragout_names.push_back(E.key);
+			}
+
+			fragout_names.sort_custom<StringName::AlphCompare>();
+			r_gen_code.color_attachment_size = fragout_names.size();
+			if (r_gen_code.color_attachment_size > 0) {
+				r_gen_code.uses_color_attachment = true;
+				print_line("sizemore: " + itos(r_gen_code.color_attachment_size));
+			}
+			for (int k = 0; k < fragout_names.size(); k++) {
+				StringName fragment_name = fragout_names[k];
+
+				const SL::ShaderNode::FragmentOut& fragout = pnode->fragouts[fragment_name];
+				String vcode;
+				vcode += _typestr(fragout.type);
+				vcode += " " + _mkid(fragment_name);
+				vcode += ";\n";
+
+				r_gen_code.fragment_outs += "layout(location=" + itos(index) + ") ";
+				r_gen_code.fragment_outs += " out " + vcode;
+				index += 1U;
+			}
+
+			//-----------------------------------------------
 			for (int i = 0; i < pnode->vconstants.size(); i++) {
 				const SL::ShaderNode::Constant &cnode = pnode->vconstants[i];
 				String gcode;
@@ -923,7 +967,13 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 							name = "depth_buffer";
 							r_gen_code.uses_depth_texture = true;
 						} else {
-							name = _mkid(vnode->name); //texture, use as is
+							StringName variable_name = vnode->name;
+							if (u.hint == ShaderLanguage::ShaderNode::Uniform::HINT_COLOR_ATTACHMENT_TEXTURE) {
+								variable_name = "color_attachment_" + itos(r_gen_code.color_attachment_counter);
+
+								r_gen_code.uses_color_attachment_texture = true;
+							}
+							name = _mkid(variable_name); //texture, use as is
 						}
 
 						code = name;

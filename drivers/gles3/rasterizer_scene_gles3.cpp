@@ -173,6 +173,14 @@ void RasterizerSceneGLES3::_geometry_instance_add_surface_with_material(Geometry
 	bool has_alpha = has_base_alpha || has_blend_alpha;
 
 	uint32_t flags = 0;
+	if (p_material->shader_data->uses_color_attachment) {
+		flags |= GeometryInstanceSurface::FLAG_USES_COLOR_ATTACHMENT;
+		scene_state.color_attachment_size = p_material->shader_data->color_attachment_size > 0 ? p_material->shader_data->color_attachment_size: scene_state.color_attachment_size;
+	}
+
+	if (p_material->shader_data->uses_color_attachment_texture) {
+		flags |= GeometryInstanceSurface::FLAG_USES_COLOR_ATTACHMENT_TEXTURE;
+	}
 
 	if (p_material->shader_data->uses_screen_texture) {
 		flags |= GeometryInstanceSurface::FLAG_USES_SCREEN_TEXTURE;
@@ -1317,7 +1325,14 @@ void RasterizerSceneGLES3::_fill_render_list(RenderListType p_render_list, const
 				if (surf->flags & GeometryInstanceSurface::FLAG_USES_DEPTH_TEXTURE) {
 					scene_state.used_depth_texture = true;
 				}
-
+				if (surf->flags & GeometryInstanceSurface::FLAG_USES_COLOR_ATTACHMENT) {
+					scene_state.used_color_attachment = true;
+					scene_state.color_attachment_textures.resize_zeroed(surf->material->shader_data->color_attachment_size);
+				}
+				if (surf->flags & GeometryInstanceSurface::FLAG_USES_COLOR_ATTACHMENT_TEXTURE) {
+					scene_state.used_color_attachment_texture = true;
+				}
+				
 				/*
 					Add elements here if there are shadows
 				*/
@@ -2015,9 +2030,29 @@ void RasterizerSceneGLES3::render_scene(const Ref<RenderSceneBuffers> &p_render_
 
 		_draw_sky(render_data.environment, render_data.cam_projection, render_data.cam_transform, sky_energy_multiplier, p_camera_data->view_count > 1, flip_y);
 	}
+	if (scene_state.used_color_attachment) {
+		glBindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
+		if (scene_state.color_attachment_size > 0 && scene_state.color_attachment_textures[0] == 0) {
 
+			scene_state.color_attachment_buffers.resize_zeroed(scene_state.color_attachment_size + 1);
+			scene_state.color_attachment_clear.resize_zeroed(scene_state.color_attachment_size + 1);
+			scene_state.color_attachment_buffers.set(0, GL_COLOR_ATTACHMENT0);
+			scene_state.color_attachment_clear.set(0, GL_COLOR_ATTACHMENT0);
+			glGenTextures(scene_state.color_attachment_textures.size(), scene_state.color_attachment_textures.ptrw());
+			for (int j = 0; j < scene_state.color_attachment_textures.size(); j++) {
+				glBindTexture(GL_TEXTURE_2D, scene_state.color_attachment_textures[j]);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, rt->size.x, rt->size.y, 0, GL_RGBA, GL_FLOAT, nullptr);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1 + j, GL_TEXTURE_2D, scene_state.color_attachment_textures[j], 0);
+				scene_state.color_attachment_buffers.set(j + 1, GL_COLOR_ATTACHMENT1 + j);
+			}
+		}
+	}
 	if (scene_state.used_screen_texture || scene_state.used_depth_texture) {
-		texture_storage->copy_scene_to_backbuffer(rt, scene_state.used_screen_texture, scene_state.used_depth_texture);
+		texture_storage->copy_scene_to_backbuffer(rt,scene_state.used_screen_texture, scene_state.used_depth_texture);
 		glBindFramebuffer(GL_READ_FRAMEBUFFER, rt->fbo);
 		glReadBuffer(GL_COLOR_ATTACHMENT0);
 		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, rt->backbuffer_fbo);
@@ -2035,6 +2070,7 @@ void RasterizerSceneGLES3::render_scene(const Ref<RenderSceneBuffers> &p_render_
 			glActiveTexture(GL_TEXTURE0 + config->max_texture_image_units - 6);
 			glBindTexture(GL_TEXTURE_2D, rt->backbuffer_depth);
 		}
+
 		glBindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
 	}
 
@@ -2059,7 +2095,7 @@ void RasterizerSceneGLES3::render_scene(const Ref<RenderSceneBuffers> &p_render_
 }
 
 template <PassMode p_pass_mode>
-void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params, const RenderDataGLES3 *p_render_data, uint32_t p_from_element, uint32_t p_to_element, bool p_alpha_pass) {
+void RasterizerSceneGLES3::_render_list_template(RenderListParameters* p_params, const RenderDataGLES3* p_render_data, uint32_t p_from_element, uint32_t p_to_element, bool p_alpha_pass) {
 	GLES3::MeshStorage *mesh_storage = GLES3::MeshStorage::get_singleton();
 	GLES3::ParticlesStorage *particles_storage = GLES3::ParticlesStorage::get_singleton();
 	GLES3::MaterialStorage *material_storage = GLES3::MaterialStorage::get_singleton();
@@ -2150,6 +2186,17 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 		//request a redraw if one of the shaders uses TIME
 		if (shader->uses_time) {
 			should_request_redraw = true;
+		}
+
+		if (shader->uses_color_attachment) {
+			glDrawBuffers(scene_state.color_attachment_buffers.size(), scene_state.color_attachment_buffers.ptrw());
+			static const float transparent[] = { 0, 0, 0, 0 };
+			for (int j = 1; j < scene_state.color_attachment_buffers.size() + 1; j++) {
+				glClearBufferfv(GL_COLOR, j, transparent);
+			}
+		}
+		else if(scene_state.used_color_attachment && !shader->uses_color_attachment) {	
+			glDrawBuffers(scene_state.color_attachment_clear.size(), scene_state.color_attachment_clear.ptrw());
 		}
 
 		if constexpr (p_pass_mode == PASS_MODE_COLOR_TRANSPARENT) {
@@ -2371,6 +2418,20 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 			}
 		}
 
+		if (shader->uses_color_attachment_texture) {
+			if (shader->color_attachment_texture_list.size() < scene_state.color_attachment_textures.size()) {
+				GLuint shader_id = material_storage->shaders.scene_shader.version_get_shader_program_id(shader->version, instance_variant, spec_constants);
+				for (int i = 0; i < shader->color_attachment_texture_list.size(); i++) {
+					//print_line(shader->color_attachment_texture_list.get(i));
+					const String uniform_name = (String)(shader->color_attachment_texture_list.get(i));
+					int uniform_loc = glGetUniformLocation(shader_id, uniform_name.ascii().get_data());
+					glActiveTexture(GL_TEXTURE0 + uniform_loc);
+					glBindTexture(GL_TEXTURE_2D,scene_state.color_attachment_textures[i]);
+					//print_line("SHADER ID: " + itos(shader_id) + " unifroms loc: " + itos(uniform_loc) + " col attach: " + itos(shader->color_attachment_texture_list.size()) + " test coll: " + itos(scene_state.color_attachment_textures.size()));
+				}
+			}
+		}
+
 		if (inst->instance_count > 0) {
 			// Using MultiMesh or Particles.
 			// Bind instance buffers.
@@ -2423,6 +2484,7 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 				glDrawArrays(primitive_gl, 0, count);
 			}
 		}
+
 		if (inst->instance_count > 0) {
 			glDisableVertexAttribArray(12);
 			glDisableVertexAttribArray(13);

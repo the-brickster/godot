@@ -378,3 +378,5 @@ $RECYCLE.BIN/
 *.msm
 *.msp
 *.lnk
+/modules/goxlap
+/temp.txt

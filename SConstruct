@@ -178,8 +178,8 @@ opts.Add(
         "optimize", "Optimization level", "speed_trace", ("none", "custom", "debug", "speed", "speed_trace", "size")
     )
 )
-opts.Add(BoolVariable("debug_symbols", "Build with debugging symbols", False))
-opts.Add(BoolVariable("separate_debug_symbols", "Extract debugging symbols to a separate file", False))
+opts.Add(BoolVariable("debug_symbols", "Build with debugging symbols", True))
+opts.Add(BoolVariable("separate_debug_symbols", "Extract debugging symbols to a separate file", True))
 opts.Add(EnumVariable("lto", "Link-time optimization (production builds)", "none", ("none", "auto", "thin", "full")))
 opts.Add(BoolVariable("production", "Set defaults to build Godot for use in production", False))
 
@@ -197,7 +197,7 @@ opts.Add("custom_modules", "A list of comma-separated directory paths containing
 opts.Add(BoolVariable("custom_modules_recursive", "Detect custom modules recursively for each specified path.", True))
 
 # Advanced options
-opts.Add(BoolVariable("dev_mode", "Alias for dev options: verbose=yes warnings=extra werror=yes tests=yes", False))
+opts.Add(BoolVariable("dev_mode", "Alias for dev options: verbose=yes warnings=extra werror=yes tests=yes", True))
 opts.Add(BoolVariable("tests", "Build the unit tests", False))
 opts.Add(BoolVariable("fast_unsafe", "Enable unsafe options for faster rebuilds", False))
 opts.Add(BoolVariable("compiledb", "Generate compilation DB (`compile_commands.json`) for external tools", False))
@@ -404,7 +404,7 @@ env_base.platform_apis = platform_apis
 # - Debug symbols for crash traces / debuggers
 
 env_base.editor_build = env_base["target"] == "editor"
-env_base.dev_build = env_base["dev_build"]
+env_base.dev_build = env_base["dev_build"] == "editor"
 env_base.debug_features = env_base["target"] in ["editor", "template_debug"]
 
 if env_base.dev_build:
@@ -415,7 +415,7 @@ else:  # Release
     opt_level = "speed"
 
 env_base["optimize"] = ARGUMENTS.get("optimize", opt_level)
-env_base["debug_symbols"] = methods.get_cmdline_bool("debug_symbols", env_base.dev_build)
+env_base["debug_symbols"] = methods.get_cmdline_bool("debug_symbols", True)
 
 if env_base.editor_build:
     env_base.Append(CPPDEFINES=["TOOLS_ENABLED"])
@@ -730,8 +730,8 @@ if selected_platform in platform_list:
         # Set exception handling model to avoid warnings caused by Windows system headers.
         env.Append(CCFLAGS=["/EHsc"])
 
-        if env["werror"]:
-            env.Append(CCFLAGS=["/WX"])
+##        if env["werror"]:
+##            env.Append(CCFLAGS=["/WX"])
     else:  # GCC, Clang
         common_warnings = []
 

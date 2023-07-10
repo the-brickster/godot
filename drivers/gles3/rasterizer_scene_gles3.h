@@ -192,6 +192,8 @@ private:
 			FLAG_USES_DEPTH_TEXTURE = 4096,
 			FLAG_USES_NORMAL_TEXTURE = 8192,
 			FLAG_USES_DOUBLE_SIDED_SHADOWS = 16384,
+			FLAG_USES_COLOR_ATTACHMENT = 32768,
+			FLAG_USES_COLOR_ATTACHMENT_TEXTURE = 65536,
 		};
 
 		union {
@@ -375,6 +377,8 @@ private:
 		bool used_screen_texture = false;
 		bool used_normal_texture = false;
 		bool used_depth_texture = false;
+		bool used_color_attachment = false;
+		bool used_color_attachment_texture = false;
 
 		LightData *omni_lights = nullptr;
 		LightData *spot_lights = nullptr;
@@ -388,6 +392,10 @@ private:
 
 		DirectionalLightData *directional_lights = nullptr;
 		GLuint directional_light_buffer = 0;
+		GLuint color_attachment_size = 0;
+		Vector<GLuint> color_attachment_textures;
+		Vector<GLuint> color_attachment_buffers;
+		Vector<GLuint> color_attachment_clear;
 	} scene_state;
 
 	struct RenderListParameters {

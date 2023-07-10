@@ -214,6 +214,7 @@ const char *ShaderLanguage::token_names[TK_MAX] = {
 	"HINT_SCREEN_TEXTURE",
 	"HINT_NORMAL_ROUGHNESS_TEXTURE",
 	"HINT_DEPTH_TEXTURE",
+	"HINT_COLOR_ATTACHMENT_TEXTURE",
 	"FILTER_NEAREST",
 	"FILTER_LINEAR",
 	"FILTER_NEAREST_MIPMAP",
@@ -269,6 +270,8 @@ enum ContextFlag : uint32_t {
 	CF_CONST_KEYWORD = 4096U, // "const"
 	CF_UNIFORM_QUALIFIER = 8192U, // "<x> uniform float t;"
 	CF_SHADER_TYPE = 16384U, // "shader_type"
+	CF_FRAGOUT_TYPE = 32768U, // "out <x> myFragout;"
+	CF_FRAGOUT_KEYWORD = 65536U, // "out"
 };
 
 const uint32_t KCF_DATATYPE = CF_BLOCK | CF_GLOBAL_SPACE | CF_DATATYPE | CF_FUNC_DECL_PARAM_TYPE | CF_UNIFORM_TYPE;
@@ -296,7 +299,7 @@ const ShaderLanguage::KeyWord ShaderLanguage::keyword_list[] = {
 	{ TK_TYPE_FLOAT, "float", KCF_DATATYPE | CF_VARYING_TYPE, {}, {} },
 	{ TK_TYPE_VEC2, "vec2", KCF_DATATYPE | CF_VARYING_TYPE, {}, {} },
 	{ TK_TYPE_VEC3, "vec3", KCF_DATATYPE | CF_VARYING_TYPE, {}, {} },
-	{ TK_TYPE_VEC4, "vec4", KCF_DATATYPE | CF_VARYING_TYPE, {}, {} },
+	{ TK_TYPE_VEC4, "vec4", KCF_DATATYPE | CF_VARYING_TYPE | CF_FRAGOUT_TYPE, {}, {} },
 	{ TK_TYPE_MAT2, "mat2", KCF_DATATYPE | CF_VARYING_TYPE, {}, {} },
 	{ TK_TYPE_MAT3, "mat3", KCF_DATATYPE | CF_VARYING_TYPE, {}, {} },
 	{ TK_TYPE_MAT4, "mat4", KCF_DATATYPE | CF_VARYING_TYPE, {}, {} },
@@ -356,7 +359,7 @@ const ShaderLanguage::KeyWord ShaderLanguage::keyword_list[] = {
 	// function specifier keywords
 
 	{ TK_ARG_IN, "in", CF_FUNC_DECL_PARAM_SPEC, {}, {} },
-	{ TK_ARG_OUT, "out", CF_FUNC_DECL_PARAM_SPEC, {}, {} },
+	{ TK_ARG_OUT, "out", CF_FUNC_DECL_PARAM_SPEC | CF_GLOBAL_SPACE | CF_FRAGOUT_KEYWORD, {}, {} },
 	{ TK_ARG_INOUT, "inout", CF_FUNC_DECL_PARAM_SPEC, {}, {} },
 
 	// hints
@@ -381,6 +384,7 @@ const ShaderLanguage::KeyWord ShaderLanguage::keyword_list[] = {
 	{ TK_HINT_SCREEN_TEXTURE, "hint_screen_texture", CF_UNSPECIFIED, {}, {} },
 	{ TK_HINT_NORMAL_ROUGHNESS_TEXTURE, "hint_normal_roughness_texture", CF_UNSPECIFIED, {}, {} },
 	{ TK_HINT_DEPTH_TEXTURE, "hint_depth_texture", CF_UNSPECIFIED, {}, {} },
+	{ TK_HINT_COLOR_ATTACHMENT_TEXTURE, "hint_color_attachment_texture", CF_UNSPECIFIED, {}, {} },
 
 	{ TK_FILTER_NEAREST, "filter_nearest", CF_UNSPECIFIED, {}, {} },
 	{ TK_FILTER_LINEAR, "filter_linear", CF_UNSPECIFIED, {}, {} },
@@ -1136,6 +1140,9 @@ String ShaderLanguage::get_uniform_hint_name(ShaderNode::Uniform::Hint p_hint) {
 		case ShaderNode::Uniform::HINT_DEPTH_TEXTURE: {
 			result = "hint_depth_texture";
 		} break;
+		case ShaderNode::Uniform::HINT_COLOR_ATTACHMENT_TEXTURE: {
+			result = "hint_color_attachment_texture";
+		} break;
 		default:
 			break;
 	}
@@ -1385,6 +1392,16 @@ bool ShaderLanguage::_find_identifier(const BlockNode *p_block, bool p_allow_rea
 		}
 		if (r_type) {
 			*r_type = IDENTIFIER_VARYING;
+		}
+		return true;
+	}
+
+	if (shader->fragouts.has(p_identifier)) {
+		if (r_data_type) {
+			*r_data_type = shader->fragouts[p_identifier].type;
+		}
+		if (r_type) {
+			*r_type = IDENTIFIER_FRAGOUT;
 		}
 		return true;
 	}
@@ -3235,6 +3252,10 @@ bool ShaderLanguage::_validate_function_call(BlockNode *p_block, const FunctionI
 													_set_error(vformat(RTR("Varyings cannot be passed for the '%s' parameter."), "out"));
 													return false;
 												}
+												if (shader->fragouts.has(varname)) {
+													_set_error(vformat(RTR("Fragment outs cannot be passed for the '%s' parameter."), "out"));
+													return false;
+												}
 												if (p_function_info.built_ins.has(varname)) {
 													BuiltInInfo info = p_function_info.built_ins[varname];
 													if (info.constant) {
@@ -4529,6 +4550,39 @@ bool ShaderLanguage::_validate_varying_assign(ShaderNode::Varying &p_varying, St
 	return true;
 }
 
+bool ShaderLanguage::_validate_fragout_assign(ShaderNode::FragmentOut& p_fragmentout, String* r_message) {
+	if (current_function != "fragment") {
+		*r_message = vformat(RTR("Varying may not be assigned in the '%s' function."), current_function);
+		return false;
+	}
+	switch (p_fragmentout.stage) {
+	case ShaderNode::FragmentOut::STAGE_UNKNOWN:
+		if (current_function == varying_function_names.vertex) {
+			if (p_fragmentout.type != TYPE_VEC4) {
+				*r_message = vformat(RTR("Fragment Outs may only be assigned in the 'fragment' function."));
+				return false;
+			}
+			else if (current_function == varying_function_names.fragment) {
+				p_fragmentout.stage = ShaderNode::FragmentOut::STAGE_FRAGMENT;
+			}
+		}
+	break;
+	case ShaderNode::FragmentOut::STAGE_VERTEX:
+	case ShaderNode::FragmentOut::STAGE_VERTEX_TO_FRAGMENT_LIGHT:
+		*r_message = vformat(RTR("Fragment Outs may only be assigned in the 'fragment' function."));
+		return false;
+	break;
+	case ShaderNode::FragmentOut::STAGE_FRAGMENT:
+	case ShaderNode::FragmentOut::STAGE_FRAGMENT_TO_LIGHT:
+	if (current_function == varying_function_names.vertex) {
+		*r_message = vformat(RTR("Fragment Outs may only be assigned in the 'fragment' function."));
+		return false;
+	}
+	break;
+	}
+	return true;
+}
+
 bool ShaderLanguage::_check_node_constness(const Node *p_node) const {
 	switch (p_node->type) {
 		case Node::NODE_TYPE_OPERATOR: {
@@ -5544,6 +5598,36 @@ ShaderLanguage::Node *ShaderLanguage::_parse_expression(BlockNode *p_block, cons
 							_set_error(RTR("Varying with integer data type must be declared with `flat` interpolation qualifier."));
 							return nullptr;
 						}
+					}
+					if (ident_type == IDENTIFIER_FRAGOUT) {
+						TkPos prev_pos = _get_tkpos();
+						Token next_token = _get_token();
+
+						_set_tkpos(prev_pos);
+
+						ShaderNode::FragmentOut& var = shader->fragouts[identifier];
+						String error;
+						if (is_token_operator_assign(next_token.type)) {
+							if (!_validate_fragout_assign(shader->fragouts[identifier], &error)) {
+								_set_error(error);
+								return nullptr;
+							}
+						} else {
+							switch (var.stage) {
+							case ShaderNode::FragmentOut::STAGE_VERTEX:
+							case ShaderNode::FragmentOut::STAGE_VERTEX_TO_FRAGMENT_LIGHT:
+							case ShaderNode::FragmentOut::STAGE_UNKNOWN: {
+								_set_error(vformat(RTR("Fragment out may only be used in the 'fragment' function.")));
+							}break;
+
+							case ShaderNode::FragmentOut::STAGE_FRAGMENT:
+							case ShaderNode::FragmentOut::STAGE_FRAGMENT_TO_LIGHT: {
+
+							}break;
+
+							}
+						}
+
 					}
 
 					if (ident_type == IDENTIFIER_FUNCTION) {
@@ -8818,6 +8902,13 @@ Error ShaderLanguage::_parse_shader(const HashMap<StringName, FunctionInfo> &p_f
 										return ERR_PARSE_ERROR;
 									}
 								} break;
+								case TK_HINT_COLOR_ATTACHMENT_TEXTURE: {
+									if (!is_sampler_type(type)) {
+										_set_error("'hint_color_attachment_texture' can only be used with a sampler");
+										return ERR_PARSE_ERROR;
+									}
+									new_hint = ShaderNode::Uniform::HINT_COLOR_ATTACHMENT_TEXTURE;
+								} break;
 								case TK_FILTER_NEAREST: {
 									new_filter = FILTER_NEAREST;
 								} break;
@@ -8995,6 +9086,42 @@ Error ShaderLanguage::_parse_shader(const HashMap<StringName, FunctionInfo> &p_f
 					}
 #endif // DEBUG_ENABLED
 				}
+
+			} break;
+			case TK_ARG_OUT: {
+				//out vec4 color_out;
+				StringName name;
+				ShaderNode::FragmentOut fragout;
+				tk = _get_token();
+				if (tk.type != TK_TYPE_VEC4) {
+					_set_error("Expected vec4 for shader outputs");
+					return ERR_PARSE_ERROR;
+				}
+				fragout.type = get_token_datatype(tk.type);
+				tk = _get_token();
+				name = tk.text;
+				print_line("Test: ", name);
+
+				if (_find_identifier(nullptr, false, constants, name)) {
+					_set_redefinition_error(String(name));
+					return ERR_PARSE_ERROR;
+				}
+
+				if (has_builtin(p_functions, name)) {
+					_set_redefinition_error(String(name));
+					return ERR_PARSE_ERROR;
+				}
+				prev_pos = _get_tkpos();
+				print_line("TEST POS: "+itos(prev_pos.char_idx));
+				tk = _get_token();
+				
+				if (tk.type != TK_SEMICOLON) {
+					_set_expected_error(";");
+					return ERR_PARSE_ERROR;
+				}
+				fragout.tkpos = prev_pos;
+				fragout.name = name;
+				shader->fragouts[name] = fragout;
 
 			} break;
 			case TK_UNIFORM_GROUP: {
@@ -10217,6 +10344,9 @@ Error ShaderLanguage::complete(const String &p_code, const ShaderCompileInfo &p_
 					for (const KeyValue<StringName, ShaderNode::Uniform> &E : shader->uniforms) {
 						matches.insert(E.key, ScriptLanguage::CODE_COMPLETION_KIND_MEMBER);
 					}
+					for (const KeyValue<StringName, ShaderNode::FragmentOut>& E : shader->fragouts) {
+						matches.insert(E.key, ScriptLanguage::CODE_COMPLETION_KIND_VARIABLE);
+					}
 				}
 
 				for (int i = 0; i < shader->functions.size(); i++) {
@@ -10565,6 +10695,7 @@ Error ShaderLanguage::complete(const String &p_code, const ShaderCompileInfo &p_
 						options.push_back("hint_screen_texture");
 						options.push_back("hint_normal_roughness_texture");
 						options.push_back("hint_depth_texture");
+						options.push_back("hint_color_attachment_texture");
 						options.push_back("source_color");
 					}
 					if (current_uniform_repeat == REPEAT_DEFAULT) {

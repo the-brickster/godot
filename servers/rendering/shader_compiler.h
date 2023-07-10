@@ -66,14 +66,19 @@ public:
 			ShaderLanguage::TextureRepeat repeat;
 			bool global;
 			int array_size;
+			bool is_color_attachment = false;
 		};
 
 		Vector<Texture> texture_uniforms;
 
+		Vector<StringName> color_attachment_texture_list;
 		Vector<uint32_t> uniform_offsets;
 		uint32_t uniform_total_size;
+		uint32_t color_attachment_size;
 		String uniforms;
+		String fragment_outs;
 		String stage_globals[STAGE_MAX];
+		uint32_t color_attachment_counter = 0;
 
 		HashMap<String, String> code;
 
@@ -84,6 +89,8 @@ public:
 		bool uses_screen_texture;
 		bool uses_depth_texture;
 		bool uses_normal_roughness_texture;
+		bool uses_color_attachment;
+		bool uses_color_attachment_texture;
 	};
 
 	struct DefaultIdentifierActions {
@@ -100,6 +107,7 @@ public:
 		String global_buffer_array_variable;
 		String instance_uniform_index_variable;
 		uint32_t base_varying_index = 0;
+		uint32_t base_fragout_index = 1;
 		bool apply_luminance_multiplier = false;
 		bool check_multiview_samplers = false;
 	};

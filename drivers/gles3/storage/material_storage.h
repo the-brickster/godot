@@ -268,7 +268,7 @@ struct SceneShaderData : public ShaderData {
 	RID version;
 
 	Vector<ShaderCompiler::GeneratedCode::Texture> texture_uniforms;
-
+	Vector<StringName> color_attachment_texture_list;
 	Vector<uint32_t> ubo_offsets;
 	uint32_t ubo_size;
 
@@ -316,6 +316,10 @@ struct SceneShaderData : public ShaderData {
 	bool uses_bones;
 	bool uses_weights;
 
+	bool uses_color_attachment = false;
+	bool uses_color_attachment_texture = false;
+
+	uint32_t color_attachment_size = 0;
 	uint32_t vertex_input_mask = 0;
 
 	uint64_t last_pass = 0;

@@ -95,6 +95,7 @@ private:
 		CharString uniforms;
 		CharString vertex_globals;
 		CharString fragment_globals;
+		CharString fragment_outs;
 		HashMap<StringName, CharString> code_sections;
 		Vector<CharString> custom_defines;
 
@@ -133,7 +134,8 @@ private:
 				TYPE_VERTEX_GLOBALS,
 				TYPE_FRAGMENT_GLOBALS,
 				TYPE_CODE,
-				TYPE_TEXT
+				TYPE_TEXT,
+				TYPE_FRAGMENT_OUTS
 			};
 
 			Type type;
@@ -232,6 +234,49 @@ protected:
 		return true;
 	}
 
+	_FORCE_INLINE_ GLuint _version_get_shader_program_id(RID p_version, int p_variant, uint64_t p_specialization) {
+		ERR_FAIL_INDEX_V(p_variant, variant_count, false);
+
+		Version* version = version_owner.get_or_null(p_version);
+		ERR_FAIL_COND_V(!version, false);
+
+		if (version->variants.size() == 0) {
+			_initialize_version(version); //may lack initialization
+		}
+
+
+		Version::Specialization* spec = version->variants[p_variant].lookup_ptr(p_specialization);
+		if (!spec) {
+			if (false) {
+				// Queue load this specialization and use defaults in the meantime (TODO)
+
+				spec = version->variants[p_variant].lookup_ptr(specialization_default_mask);
+			}
+			else {
+				// Compile on the spot
+				Version::Specialization s;
+				_compile_specialization(s, p_variant, version, p_specialization);
+				version->variants[p_variant].insert(p_specialization, s);
+				spec = version->variants[p_variant].lookup_ptr(p_specialization);
+			}
+		}
+		else if (spec->build_queued) {
+			// Still queued, wait
+			spec = version->variants[p_variant].lookup_ptr(specialization_default_mask);
+		}
+
+		if (!spec || !spec->ok) {
+			WARN_PRINT_ONCE("shader failed to compile, unable to bind shader.");
+			return 0;
+		}
+		//print_line("custom uniform count: " + itos(current_shader->custom_uniform_locations.size()));
+		//for (auto x : spec->custom_uniform_locations) {
+		//	print_line("custom uniform: " + x.key);
+		//}
+		return spec->id;
+		
+	}
+
 	_FORCE_INLINE_ int _version_get_uniform(int p_which, RID p_version, int p_variant, uint64_t p_specialization) {
 		ERR_FAIL_INDEX_V(p_which, uniform_count, -1);
 		Version *version = version_owner.get_or_null(p_version);
@@ -248,7 +293,7 @@ protected:
 public:
 	RID version_create();
 
-	void version_set_code(RID p_version, const HashMap<String, String> &p_code, const String &p_uniforms, const String &p_vertex_globals, const String &p_fragment_globals, const Vector<String> &p_custom_defines, const LocalVector<ShaderGLES3::TextureUniformData> &p_texture_uniforms, bool p_initialize = false);
+	void version_set_code(RID p_version, const HashMap<String, String> &p_code, const String &p_uniforms, const String &p_vertex_globals, const String &p_fragment_globals, const String& p_fragment_outs, const Vector<String> &p_custom_defines, const LocalVector<ShaderGLES3::TextureUniformData> &p_texture_uniforms, bool p_initialize = false);
 
 	bool version_is_valid(RID p_version);
 
