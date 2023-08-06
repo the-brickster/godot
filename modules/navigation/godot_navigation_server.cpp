@@ -340,6 +340,20 @@ RID GodotNavigationServer::region_create() {
 	return rid;
 }
 
+COMMAND_2(region_set_enabled, RID, p_region, bool, p_enabled) {
+	NavRegion *region = region_owner.get_or_null(p_region);
+	ERR_FAIL_COND(region == nullptr);
+
+	region->set_enabled(p_enabled);
+}
+
+bool GodotNavigationServer::region_get_enabled(RID p_region) const {
+	const NavRegion *region = region_owner.get_or_null(p_region);
+	ERR_FAIL_COND_V(region == nullptr, false);
+
+	return region->get_enabled();
+}
+
 COMMAND_2(region_set_use_edge_connections, RID, p_region, bool, p_enabled) {
 	NavRegion *region = region_owner.get_or_null(p_region);
 	ERR_FAIL_COND(region == nullptr);
@@ -446,9 +460,12 @@ COMMAND_2(region_set_navigation_mesh, RID, p_region, Ref<NavigationMesh>, p_navi
 	region->set_mesh(p_navigation_mesh);
 }
 
+#ifndef DISABLE_DEPRECATED
 void GodotNavigationServer::region_bake_navigation_mesh(Ref<NavigationMesh> p_navigation_mesh, Node *p_root_node) {
 	ERR_FAIL_COND(p_navigation_mesh.is_null());
 	ERR_FAIL_COND(p_root_node == nullptr);
+
+	WARN_PRINT_ONCE("NavigationServer3D::region_bake_navigation_mesh() is deprecated due to core threading changes. To upgrade existing code, first create a NavigationMeshSourceGeometryData3D resource. Use this resource with method parse_source_geometry_data() to parse the SceneTree for nodes that should contribute to the navigation mesh baking. The SceneTree parsing needs to happen on the main thread. After the parsing is finished use the resource with method bake_from_source_geometry_data() to bake a navigation mesh..");
 
 #ifndef _3D_DISABLED
 	NavigationMeshGenerator::get_singleton()->clear(p_navigation_mesh);
@@ -458,6 +475,7 @@ void GodotNavigationServer::region_bake_navigation_mesh(Ref<NavigationMesh> p_na
 	NavigationMeshGenerator::get_singleton()->bake_from_source_geometry_data(p_navigation_mesh, source_geometry_data);
 #endif
 }
+#endif // DISABLE_DEPRECATED
 
 int GodotNavigationServer::region_get_connections_count(RID p_region) const {
 	NavRegion *region = region_owner.get_or_null(p_region);
@@ -506,6 +524,20 @@ RID GodotNavigationServer::link_get_map(const RID p_link) const {
 		return link->get_map()->get_self();
 	}
 	return RID();
+}
+
+COMMAND_2(link_set_enabled, RID, p_link, bool, p_enabled) {
+	NavLink *link = link_owner.get_or_null(p_link);
+	ERR_FAIL_COND(link == nullptr);
+
+	link->set_enabled(p_enabled);
+}
+
+bool GodotNavigationServer::link_get_enabled(RID p_link) const {
+	const NavLink *link = link_owner.get_or_null(p_link);
+	ERR_FAIL_COND_V(link == nullptr, false);
+
+	return link->get_enabled();
 }
 
 COMMAND_2(link_set_bidirectional, RID, p_link, bool, p_bidirectional) {
@@ -784,8 +816,8 @@ COMMAND_2(agent_set_avoidance_priority, RID, p_agent, real_t, p_priority) {
 }
 
 RID GodotNavigationServer::obstacle_create() {
-	GodotNavigationServer *mut_this = const_cast<GodotNavigationServer *>(this);
-	MutexLock lock(mut_this->operations_mutex);
+	MutexLock lock(operations_mutex);
+
 	RID rid = obstacle_owner.make_rid();
 	NavObstacle *obstacle = obstacle_owner.get_or_null(rid);
 	obstacle->set_self(rid);
